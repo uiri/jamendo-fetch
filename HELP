@@ -1,0 +1,36 @@
+----- Jamendo-Fetch -----
+
+Jamendo-Fetch is written in ruby and uses gtk2 in order to draw its front-end GUI. It allows you to download arbitrary sets of music from the legal free music site Jamendo in either MP3 or Ogg Vorbis format. It calls on wget in order to actually download files, it does some cleaning up of the names wget creates using rename and it removes the index file created to get the list of songs. Other than that, the whole thing is in ruby and there are no calls to the lower system.
+
+----- Menubar -----
+
+There are four menus in the menubar, File, ArtistEdit, TagEdit and Help. All of the menu options have shortcuts.
+
+File:
+     Open -- <control>+o
+     Save -- <control>+s
+     Quit -- <control>+q
+
+ArtistEdit:
+           Cut -- <alt>+x
+           Copy -- <alt>+c
+           Paste -- <alt>+v
+           Select All -- <alt>+s
+           Clear -- <alt>+d
+
+TagEdit:
+        Cut -- <control>+x
+        Copy -- <control>+c
+        Paste -- <control>+v
+        Select All -- <control>+a
+        Clear -- <control>+f
+
+Help:
+     Help -- <control>+h
+     About -- <control>+i
+
+It is possible to activate the download button using <control>+d
+
+The Save option will save your current options as ascii text to a file with a name of your choosing. You may open this file using the Open option in the File menu or its shortcut. The ArtistEdit and TagEdit menus provide editing functions and shortcuts for their respective textboxes. The Help menu provides this help and the about dialog.
+
+Pagination allows you to change the number of songs to download to number of songs per page and then allows you to download a full page of songs using one of the sorting options. The Artist Name isn't necessarily unique and is using Jamendo's database. Tags can be more than just genre — it can be the decades (e.g. 80s) or language (e.g. German) of the music. It isn't a perfect system but it works out most of the time. 

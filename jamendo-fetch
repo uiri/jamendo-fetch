@@ -1,0 +1,356 @@
+#! /usr/bin/env ruby
+#
+# -*- coding: utf-8 -*-
+# Jamendo-Fetch download songs off of Jamendo
+# Copyright 2011 Uiri Noyb
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# You may contact Uiri Noyb via electronic mail with the address uiri@compucrunch.com
+
+require 'gtk2'
+
+#### DEFINED METHODS ####
+
+def delete # method used to make sure that the window closes properly
+  Gtk.main_quit
+  false
+end
+
+class Gtk::Entry
+  def attacheditmenu(cut, copy, paste, selectall, clear)
+    self.signal_connect("enter_notify_event") do
+      cut.signal_connect("activate") do self.cut_clipboard end
+      copy.signal_connect("activate") do self.copy_clipboard end
+      paste.signal_connect("activate") do self.paste_clipboard end
+      selectall.signal_connect("activate") do self.select_region(0, -1) end
+      clear.signal_connect("activate") do self.delete_text(0, -1) end
+    end
+  end
+end
+
+#### MENUBAR STUFF ####
+
+scriptdirectory = File.dirname(__FILE__)
+
+#menubar and its menus
+menubox = Gtk::HBox.new(false, 0)
+menubar = Gtk::MenuBar.new
+menubox.pack_start(menubar, true, true, 0) 
+file = Gtk::MenuItem.new('_File', true)
+artistedit = Gtk::MenuItem.new('_ArtistEdit', true)
+tagedit = Gtk::MenuItem.new('_TagEdit', true)
+help = Gtk::MenuItem.new('_Help', true)
+menus = [file, artistedit, tagedit, help]
+menus.each {|var| menubar.append(var) }
+
+#keyboard shortcut group
+shortcuts = Gtk::AccelGroup.new
+
+#File menu stuffs
+filemenu = Gtk::Menu.new
+open = Gtk::ImageMenuItem.new(Gtk::Stock::OPEN, shortcuts)
+save = Gtk::ImageMenuItem.new(Gtk::Stock::SAVE, shortcuts)
+quit = Gtk::ImageMenuItem.new(Gtk::Stock::QUIT, shortcuts)
+
+#ArtistEdit menu stuffs
+artisteditmenu = Gtk::Menu.new
+artistcut = Gtk::ImageMenuItem.new(Gtk::Stock::CUT, nil)
+artistcopy = Gtk::ImageMenuItem.new(Gtk::Stock::COPY, nil)
+artistpaste = Gtk::ImageMenuItem.new(Gtk::Stock::PASTE, nil)
+artistselectall = Gtk::ImageMenuItem.new(Gtk::Stock::SELECT_ALL, nil)
+artistclear = Gtk::ImageMenuItem.new(Gtk::Stock::CLEAR, nil)
+
+#TagEdit menu stuffs
+tageditmenu = Gtk::Menu.new
+tagcut = Gtk::ImageMenuItem.new(Gtk::Stock::CUT, shortcuts)
+tagcopy = Gtk::ImageMenuItem.new(Gtk::Stock::COPY, shortcuts)
+tagpaste = Gtk::ImageMenuItem.new(Gtk::Stock::PASTE, shortcuts)
+tagselectall = Gtk::ImageMenuItem.new(Gtk::Stock::SELECT_ALL, nil)
+tagclear = Gtk::ImageMenuItem.new(Gtk::Stock::CLEAR, nil)
+
+#Help menu stuffs
+helpmenu = Gtk::Menu.new
+heLp = Gtk::ImageMenuItem.new(Gtk::Stock::HELP, shortcuts)
+about = Gtk::ImageMenuItem.new(Gtk::Stock::ABOUT, nil)
+
+#keyboard shortcuts
+artistcut.add_accelerator('activate', shortcuts, Gdk::Keyval::GDK_X, Gdk::Window::MOD1_MASK, Gtk::ACCEL_VISIBLE)
+artistcopy.add_accelerator('activate', shortcuts, Gdk::Keyval::GDK_C, Gdk::Window::MOD1_MASK, Gtk::ACCEL_VISIBLE)
+artistpaste.add_accelerator('activate', shortcuts, Gdk::Keyval::GDK_V, Gdk::Window::MOD1_MASK, Gtk::ACCEL_VISIBLE)
+artistselectall.add_accelerator('activate', shortcuts, Gdk::Keyval::GDK_S, Gdk::Window::MOD1_MASK, Gtk::ACCEL_VISIBLE)
+artistclear.add_accelerator('activate', shortcuts, Gdk::Keyval::GDK_D, Gdk::Window::MOD1_MASK, Gtk::ACCEL_VISIBLE)
+tagselectall.add_accelerator('activate', shortcuts, Gdk::Keyval::GDK_A, Gdk::Window::CONTROL_MASK, Gtk::ACCEL_VISIBLE)
+tagclear.add_accelerator('activate', shortcuts, Gdk::Keyval::GDK_F, Gdk::Window::CONTROL_MASK, Gtk::ACCEL_VISIBLE)
+about.add_accelerator('activate', shortcuts, Gdk::Keyval::GDK_I, Gdk::Window::CONTROL_MASK, Gtk::ACCEL_VISIBLE)
+
+#attach menus to their entries in the menubar
+menulist = { file => filemenu, artistedit => artisteditmenu, tagedit => tageditmenu, help => helpmenu }
+menulist.each {|item, menu| item.submenu = menu }
+filecontent = [open, save, quit]
+tageditcontent = [tagcut, tagcopy, tagpaste, tagselectall, tagclear]
+artisteditcontent = [artistcut, artistcopy, artistpaste, artistselectall, artistclear]
+helpcontent = [heLp, about]
+contenthash = { filemenu => filecontent, artisteditmenu => artisteditcontent, tageditmenu => tageditcontent, helpmenu => helpcontent }
+contenthash.each{|menu, content| content.each{|item| menu.append(item) } }
+
+#### Initialization of the Window ####
+
+#create the window, icon and main widget container; set window size and icon
+window = Gtk::Window.new('Jamendo Fetch')
+window.signal_connect('delete_event') do delete end
+mainbox = Gtk::VBox.new(false, 0)
+window.add_accel_group(shortcuts)
+window.add(mainbox)
+infobox = Gtk::VBox.new(true, 2)
+mainbox.pack_start(menubox, false, false, 0)
+mainbox.pack_start(infobox, false, false, 0)
+window.set_default_size(410, 250)
+icon = Gdk::Pixbuf.new(scriptdirectory + '/icon.png', 100, 100)
+window.icon=icon
+
+#### THE REST OF THE WINDOW ####
+
+#create the pagination check box and container
+pagebox = Gtk::HBox.new(true, 2)
+pagebutton = Gtk::CheckButton.new('Pagination')
+pagebox.pack_start(pagebutton, true, true, 0)
+
+#create the number of songs label, container and spin button
+numbox = Gtk::HBox.new(true, 2)
+numlabel = Gtk::Label.new('Number of Songs to download:')
+numentry = Gtk::SpinButton.new(1.0, 1000.0, 1.0)
+numentry.set_value(10)
+numbox.pack_start(numlabel, false, true, 0)
+numbox.pack_start(numentry, true, true, 0)
+
+#creae the sort label, drop down menu and container
+sortbox = Gtk::HBox.new(true, 2)
+sortlabel = Gtk::Label.new('Sorted by:')
+sortentry = Gtk::ComboBox.new
+sortoptions = ['Random', 'Newest', 'Highest Rated in Reviews', 'Most Popular Past Week', 'Most Popular Past Month', 'Most Listened to Online']
+sortoptions.each {|option| sortentry.append_text(option) }
+sortbox.pack_start(sortlabel, false, true, 0)
+sortbox.pack_start(sortentry, true, true, 0)
+sortentry.set_active(0)
+
+#create the tag label, entry box and container
+tagbox = Gtk::HBox.new(true, 2)
+taglabel = Gtk::Label.new('Tags (separate by commas):')
+tagentry = Gtk::Entry.new
+tagbox.pack_start(taglabel, false, true, 0)
+tagbox.pack_start(tagentry, true, true, 0)
+
+#create the format label, drop down menu and container
+formatbox = Gtk::HBox.new(true, 2)
+formatlabel = Gtk::Label.new('Format to download:')
+formatentry = Gtk::ComboBox.new
+formatentry.append_text('MP3')
+formatentry.append_text('Ogg Vorbis')
+formatbox.pack_start(formatlabel, false, true, 0)
+formatbox.pack_start(formatentry, true, true, 0)
+formatentry.set_active(1)
+
+#create the artist name label, entry box and container
+artistbox = Gtk::HBox.new(true, 2)
+artistlabel = Gtk::Label.new('Artist name:')
+artistentry = Gtk::Entry.new
+artistbox.pack_start(artistlabel, false, true, 0)
+artistbox.pack_start(artistentry, true, true, 0)
+
+#create the download button and container
+downloadbox = Gtk::HBox.new(true, 2)
+download = Gtk::Button.new('Download')
+downloadbox.pack_start(download, true, true, 0)
+download.add_accelerator("clicked", shortcuts, Gdk::Keyval::GDK_D, Gdk::Window::CONTROL_MASK, Gtk::ACCEL_VISIBLE)
+
+# pack all the containers into the main one in the window
+boxlist = [pagebox, numbox, artistbox, sortbox, formatbox, tagbox, downloadbox]
+boxlist.each {|box| infobox.pack_start(box, false, false, 0) }
+
+#### METHODS FOR EVENTS ####
+
+#method called when the download button gets clicked
+download.signal_connect( "clicked" ) do
+  urlbase = "http://api.jamendo.com/get2/stream+artist/track/plain/track_album+album_artist/" # base url for the api to get the list of songs
+  numparam = "?n=" + numentry.value.to_i.to_s # translate the spinbox input into a portion of the api url
+  # check the sorting and turn it into the appropriate value for the url. default is random.
+  sortlist = ['random', 'releasedate', 'rating', 'ratingweek', 'ratingmonth', 'listened']
+  if sortentry.active > 0
+    sortvalue = sortlist[sortentry.active]
+  else
+   sortvalue = sortlist[0]
+  end
+  sortparam = "&order=" + sortvalue # turn the sort value for the url into a portion of the api url
+  # check the format and turn it into the appropriate value for the url. default is ogg
+  if formatentry.active == 0
+    formatvalue = "mp31"
+  else
+    formatvalue = "ogg2"
+  end
+  formatparam = "&streamencoding=" + formatvalue # turn the format value for the url into a portion of the url
+  urlname = numparam + formatparam + sortparam # put all the portions so far together
+  # if the artist entry isn't blank, turn it into a portion of the api url and add it to the end
+  if artistentry.text != ''
+    artistparam = "&artist_name=" + artistentry.text.gsub(/ /, '+')
+    urlname.insert(-1, artistparam)
+  end
+  # if the tag entry isn't blank, separate out the tags and turn them into portions of the api url. Add these portions to the end
+  if tagentry.text != ''
+    tagparam = "&idstr=" + tagentry.text.gsub(/, /, "&idstr=").gsub(/,/, "&idstr=").gsub(/ /, '+')
+    urlname.insert(-1, tagparam)
+  end
+  # if the pagination container exists, get the value of the spin button and turn it into a portion of the api url.
+  if $paginationbox != nil
+    pageparam = "&pn=" + $paginationentry.value.to_i.to_s
+    urlname.insert(-1, pageparam)
+  end
+  urlfull = urlbase + urlname # put together the base and the parameters for the api url
+  system 'wget "' + urlfull + '"' # wget the api url
+  listname = "index.html" + urlname # set the name for the file wget saved
+  sl = IO.read(listname) # set the list as the output of the file wget saved
+  songlist = sl.split(/\n/) # separate out the file wget saved into an array of song urls
+  puts songlist # output this list
+  songlist.each {|song| system 'wget ' + song } # take each song url and wget it
+  `rename s/\\?u\=0$// *` # remove fluff from each filename
+  `rm "#{listname}"` # remove the list now that it isn't needed
+end
+
+# method which is called when the pagination check box gets toggled
+pagebutton.signal_connect( "toggled" ) do
+  if numlabel.text == 'Number of Songs to download:' # if it isn't already checked
+    # create the pagination label, spin button and container
+    $paginationbox = Gtk::HBox.new(true, 2)
+    $paginationlabel = Gtk::Label.new('Page to download:')
+    $paginationentry = Gtk::SpinButton.new(1.0, 100.0, 1.0)
+    $paginationentry.set_value(1)
+    # pack it all in
+    $paginationbox.pack_start($paginationlabel, true, true, 0)
+    $paginationbox.pack_start($paginationentry, true, true, 0)
+    infobox.pack_start($paginationbox, false, false, 0)
+    infobox.reorder_child($paginationbox, 1)
+    # change the number of songs label
+    numlabel.set_text('Number of Songs per page:')
+    # refresh the window so it displays what has changed
+    window.show_all
+  else # if it is already checked
+    # take out the pagination box
+    infobox.remove($paginationbox)
+    # set the number of songs label back
+    numlabel.set_text('Number of Songs to download:')
+    #make the size back to default unless its height has been increased manually
+    if window.size[1] < 300
+      window.resize(410, 250)
+    end
+    # refresh the window
+    window.show_all
+  end
+end
+
+#make the open option in the file menu work
+open.signal_connect("activate") do
+  opendialog = Gtk::FileChooserDialog.new('Open a File...', window, Gtk::FileChooser::ACTION_OPEN, nil, [Gtk::Stock::OPEN, Gtk::Dialog::RESPONSE_ACCEPT], [Gtk::Stock::CANCEL, Gtk::Dialog::RESPONSE_CANCEL])
+  opendialog.run do |response|
+    if response == Gtk::Dialog::RESPONSE_ACCEPT
+      openedfile = IO.read(opendialog.filename)
+      openedlist = openedfile.split(/\n/)
+      if $paginationentry != nil
+        $paginationentry.set_value(openedlist[0])
+      end
+      numentry.set_value(openedlist[1].to_f)
+      artistentry.set_text(openedlist[2])
+      sortentry.set_active(openedlist[3].to_i)
+      formatentry.set_active(openedlist[4].to_i)
+      tagentry.set_text(openedlist[5])
+    end
+  opendialog.destroy
+  end
+end
+
+#make the save option in the file menu work
+save.signal_connect("activate") do
+  savedialog = Gtk::FileChooserDialog.new('Save this...', window, Gtk::FileChooser::ACTION_SAVE, nil, [Gtk::Stock::SAVE, Gtk::Dialog::RESPONSE_ACCEPT], [Gtk::Stock::CANCEL, Gtk::Dialog::RESPONSE_CANCEL])
+  savedialog.run do |response|
+    if response == Gtk::Dialog::RESPONSE_ACCEPT
+      savelist = []
+      if $paginationentry != nil
+        savelist.push($paginationentry.value)
+      else
+        savelist.push(1)
+      end
+      savelist.push(numentry.value, artistentry.text, sortentry.active, formatentry.active, tagentry.text)
+      savefile = File.new(savedialog.filename, "w")
+      savedata = savelist.join("\n")
+      savefile.write(savedata)
+    end
+  savedialog.destroy
+  end
+end
+
+#make the quit option in the file menu work
+quit.signal_connect("activate") do delete end
+
+#make the TagEdit menu work
+tagentry.attacheditmenu(tagcut, tagcopy, tagpaste, tagselectall, tagclear)
+
+#make the ArtistEdit menu work
+artistentry.attacheditmenu(artistcut, artistcopy, artistpaste, artistselectall, artistclear)
+
+
+#method which is called when the help option in the help menu is clicked
+heLp.signal_connect("activate") do
+  helpfile = IO.read(scriptdirectory + '/HELP') # define help file
+  helpwindow = Gtk::Window.new('HELP') # create help window
+  helpwindow.icon = icon # give it its icon
+  helpwindow.set_default_size(400, 250) # set it to a reasonable size
+  helpbox = Gtk::VBox.new(false, 0) # create a container for it
+  helpscroll = Gtk::ScrolledWindow.new # create the scroll bars
+  helpbuffer = Gtk::TextBuffer.new # create a buffer to hole text
+  helpbuffer.set_text(helpfile) # put the text in the buffer
+  helpview = Gtk::TextView.new(helpbuffer) # put the buffer into a view
+  helpwindow.add(helpbox) # put the container in the box
+  helpview.set_editable(false) # don't let people edit help
+  helpview.wrap_mode = Gtk::TextTag::WRAP_WORD_CHAR # let the text wrap
+  helpscroll.add(helpview) # attach the view to the scrollbars
+  helpscroll.set_policy(1,1) # set the scroll bar positions
+  helpbox.pack_start(helpscroll, true, true, 0) # put the scrollbar into the container
+  helpwindow.show_all # show the help window
+end
+
+#method which is called when the about option in the help menu is clicked
+  about.signal_connect("activate") do
+  authors = ['Uiri Noyb'] # set the authors
+  artists = ['Aaron Hamilton'] # set the artists
+  aboutdialog = Gtk::AboutDialog.new # create the dialog
+  aboutdialog.name = "Jamendo-Fetch" # set the application name
+  aboutdialog.version = "1.0.2" # set the application version
+  aboutdialog.copyright = "Copyright 2011 Uiri Noyb" # copyright notice
+  if File.exists?('/usr/share/common-licenses/GPL') # if the GPL is in a common directory use that
+    license = IO.read('/usr/share/common-licenses/GPL')
+  elsif File.exists?(scriptdirectory + '/LICENSE') # if the license is with the application use that
+    license = IO.read(scriptdirectory + '/LICENSE')
+  else # otherwise, tell the person to go get a copy of the license
+    license = "Jamendo-Fetch is licensed under the GNU General Public License. You should have downloaded a copy of it with this program."
+  end
+  aboutdialog.license = license # tell the license to display the set license
+  aboutdialog.logo = icon # show the icon
+  aboutdialog.website = 'http://uiri.selfip.com/jamendofetch.html' # link to the web page
+  aboutdialog.website_label = 'Webpage about Jamendo-Fetch' # display text for the link
+  aboutdialog.authors = authors # tell it to put the authors in the credits
+  aboutdialog.artists = artists # tell it to put the artists in the credits
+  aboutdialog.run # run the dialog
+  aboutdialog.destroy # allow it to be closed
+end
+
+# show the window and wait for input
+window.show_all
+Gtk.main
